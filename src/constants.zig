@@ -20,6 +20,9 @@ pub const DRIVER = "{4d36e978-e325-11ce-bfc1-08002be10318}\\0002";
 pub const LOCPATH = "PCIROOT(0)#PCI(0201)#PCI(0000)#PCI(0C00)#PCI(0000)#USBROOT(0)#USB(8)";
 pub const LOCINFO = "Port_#0008.Hub_#0004";
 
+pub const SERIALCOMM_PATH = "HARDWARE\\DEVICEMAP\\SERIALCOMM";
+pub const SERIALCOMM_VALUE = "\\Device\\USBSER000";
+
 pub const PORT_KEY_PATH = "SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_248A&PID_8002\\REBORNRX\\Device Parameters";
 
 pub const ERROR_INSUFFICIENT_BUFFER: u32 = 122;

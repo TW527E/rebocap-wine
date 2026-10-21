@@ -143,6 +143,13 @@ WINEPREFIX="<prefix>" "<wine>" reg query \
   其中 7 个 `SetupDi*` 函数由补丁实现，返回已验证的设备参数（Ports 类 GUID、
   实例 ID `USB\VID_248A&PID_8002\REBORNRX`、设备属性等）；
   其余 ~610 个导出通过链接期"转发条目"交给系统原版，补丁不含它们的代码。
+- **SERIALCOMM 登记**：应用另有线程轮询 `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`，
+  只接受其中列出的 COM 口。手动映射到 `dosdevices/comN` 的端口不会被 Wine mountmgr 登记，
+  该键不存在时即使 SetupDi 枚举成功也会报 `-3`。补丁在首次枚举 Ports 类时以
+  `REG_OPTION_VOLATILE` 创建该键并写入 `\Device\USBSER000 = <PortName>`（会话结束自动消失；
+  `reg.exe` 无法在易失键下建子键，故必须由补丁写入）。
+- **除错**：补丁各接管函数经 `OutputDebugStringA` 输出 `[rebocap-wine] ...`，
+  用 `WINEDEBUG=+debugstr` 查看。
 - **数据层（真）**：`SetupDiOpenDevRegKey` 返回**真实**注册表键，应用经真 `advapi32`
   读出 `PortName`；端口打开后走的是真实 Wine 串口，数据链完全真实。
 - **部署**：只新增一个 DLL，加两处注册表设置（KnownDLLs / DllOverrides）；

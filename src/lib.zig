@@ -18,7 +18,10 @@ export fn SetupDiClassGuidsFromNameW(
     required: ?*u32,
 ) callconv(.winapi) c_int {
     const name = util.readUtf16(class_name, 256);
+    var nb: [64]u8 = undefined;
+    util.log("ClassGuidsFromNameW name={s} count={d}", .{ util.asciiOf(name, &nb), guid_count });
     if (util.eqlWideAscii(name, c.CLASS_NAME)) {
+        registerSerialComm();
         if (required) |r| r.* = 1;
         if (guid_out == null or guid_count < 1) return 0;
         util.writePortsGuid(guid_out.?);
@@ -39,6 +42,7 @@ export fn SetupDiGetClassDevsW(
     hwnd_parent: ?*anyopaque,
     flags: u32,
 ) callconv(.winapi) ?*anyopaque {
+    util.log("GetClassDevsW ports={} enum={} flags=0x{x}", .{ util.isPortsGuid(class_guid), enumerator != null, flags });
     if (util.isPortsGuid(class_guid)) {
         win.SetLastError(0);
         return @ptrFromInt(c.FAKE_HDEVINFO);
@@ -58,6 +62,7 @@ export fn SetupDiEnumDeviceInfo(
     dev_info_data: ?*anyopaque,
 ) callconv(.winapi) c_int {
     if (isFake(dev_info_set)) {
+        util.log("EnumDeviceInfo index={d} cbSize={d}", .{ member_index, if (dev_info_data) |p| @as(*const u32, @ptrCast(@alignCast(p))).* else 0 });
         if (member_index != 0) {
             win.SetLastError(c.ERROR_NO_MORE_ITEMS);
             return 0;
@@ -88,6 +93,7 @@ export fn SetupDiGetDeviceInstanceIdW(
     required_size: ?*u32,
 ) callconv(.winapi) c_int {
     if (isFake(dev_info_set)) {
+        util.log("GetDeviceInstanceIdW size={d}", .{device_instance_id_size});
         const s = std.unicode.utf8ToUtf16LeStringLiteral(c.INSTANCE_ID);
         return util.provideStringChars(device_instance_id, device_instance_id_size, required_size, s);
     }
@@ -115,6 +121,7 @@ export fn SetupDiGetDeviceRegistryPropertyW(
     required_size: ?*u32,
 ) callconv(.winapi) c_int {
     if (isFake(dev_info_set)) {
+        util.log("GetDeviceRegistryPropertyW prop={d} size={d}", .{ property, property_buffer_size });
         if (property == 1) {
             const s1 = std.unicode.utf8ToUtf16LeStringLiteral(c.HWID1);
             const s2 = std.unicode.utf8ToUtf16LeStringLiteral(c.HWID2);
@@ -159,6 +166,7 @@ export fn SetupDiOpenDevRegKey(
     sam_desired: u32,
 ) callconv(.winapi) ?*anyopaque {
     if (isFake(dev_info_set)) {
+        util.log("OpenDevRegKey scope={d} type={d} sam=0x{x}", .{ scope, key_type, sam_desired });
         const hkey = reg.ensurePortKey() orelse {
             win.SetLastError(c.ERROR_FILE_NOT_FOUND);
             return @ptrFromInt(std.math.maxInt(usize));
@@ -179,6 +187,16 @@ export fn SetupDiDestroyDeviceInfoList(dev_info_set: ?*anyopaque) callconv(.wina
         return 1;
     }
     return forward.get().destroy(dev_info_set);
+}
+
+var serialcomm_done: std.atomic.Value(bool) = .init(false);
+
+/// 每个进程只登记一次 SERIALCOMM（易失键，进程内重复写入无意义）。
+fn registerSerialComm() void {
+    if (serialcomm_done.load(.acquire)) return;
+    const ok = reg.ensureSerialComm();
+    util.log("SERIALCOMM register ok={}", .{ok});
+    if (ok) serialcomm_done.store(true, .release);
 }
 
 fn isFake(p: ?*anyopaque) bool {

@@ -36,3 +36,22 @@ fn ensurePortNameValue(hkey: win.HKEY) void {
     const value = std.unicode.utf8ToUtf16LeStringLiteral(c.PORT_NAME);
     _ = win.RegSetValueExW(hkey, name, 0, win.REG_SZ, @ptrCast(value), @intCast(value.len * 2 + 2));
 }
+
+/// 确保 HKLM\HARDWARE\DEVICEMAP\SERIALCOMM 中登记了接收器的端口名。
+/// 应用会轮询该键，只接受其中列出的 COM 口；Wine 手动映射的端口不会被 mountmgr 登记。
+/// HARDWARE 为易失键，子键必须以 REG_OPTION_VOLATILE 创建，会话结束后自动消失。
+pub fn ensureSerialComm() bool {
+    var port_buf: [64]u16 = undefined;
+    const port: []const u16 = readPortName(port_buf[0..]) orelse std.unicode.utf8ToUtf16LeStringLiteral(c.PORT_NAME);
+    var value: [65]u16 = undefined;
+    @memcpy(value[0..port.len], port);
+    value[port.len] = 0;
+
+    const path = std.unicode.utf8ToUtf16LeStringLiteral(c.SERIALCOMM_PATH);
+    var hkey: win.HKEY = null;
+    var disposition: u32 = 0;
+    if (win.RegCreateKeyExW(win.HKEY_LOCAL_MACHINE, path, 0, null, win.REG_OPTION_VOLATILE, win.KEY_SET_VALUE | win.KEY_WOW64_64KEY, null, &hkey, &disposition) != 0) return false;
+    defer _ = win.RegCloseKey(hkey);
+    const name = std.unicode.utf8ToUtf16LeStringLiteral(c.SERIALCOMM_VALUE);
+    return win.RegSetValueExW(hkey, name, 0, win.REG_SZ, @ptrCast(&value), @intCast(port.len * 2 + 2)) == 0;
+}

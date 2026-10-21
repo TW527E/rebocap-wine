@@ -109,3 +109,17 @@ pub fn provideMultiSz(buf: ?[*]u8, size: u32, required: ?*u32, s1: []const u16, 
     win.SetLastError(0);
     return 1;
 }
+
+/// 除错输出：经 OutputDebugStringA 送出，用 WINEDEBUG=+debugstr 查看。
+pub fn log(comptime fmt: []const u8, args: anytype) void {
+    var buf: [512]u8 = undefined;
+    const s = std.fmt.bufPrintZ(&buf, "[rebocap-wine] " ++ fmt ++ "\n", args) catch return;
+    win.OutputDebugStringA(s.ptr);
+}
+
+/// 把 UTF-16 截成 ASCII 便于打印（非 ASCII 以 '?' 代替）。
+pub fn asciiOf(s: []const u16, out: []u8) []const u8 {
+    const n = @min(s.len, out.len);
+    for (s[0..n], 0..) |u, i| out[i] = if (u < 0x80) @intCast(u) else '?';
+    return out[0..n];
+}
