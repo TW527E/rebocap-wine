@@ -1,3 +1,5 @@
+**简体中文** · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [日本語](README.ja.md)
+
 # Rebocap Wine 兼容补丁
 
 让 Windows 版 ReboCap 客户端在 Wine（Bottles / 原生 Wine / 其他 Wine 前端）下识别
@@ -5,14 +7,25 @@ RebornBodyCap USB 接收器：界面绿灯、追踪器实时读数、双固件�
 
 > 仅适用于 Wine。真实 Windows 上设备原生就能枚举，**不需要**本补丁。
 
+> [!TIP]
+> Rebocap 已经推出**官方 Linux 版**，原生就能使用接收器，不需要 Wine，也不需要本补丁。
+> 大多数情况下建议直接用官方 Linux 版；本补丁适合仍想在 Wine 里运行 Windows 版的情况。
+> 想在 Linux 上用 WiVRn（不用 SteamVR）玩 VRChat 全身追踪，请看
+> [TW527E/rebocap-linux-wivrn-fbt](https://github.com/TW527E/rebocap-linux-wivrn-fbt)。
+
+本仓库 fork 自 [zhangxichang/rebocap-wine](https://github.com/zhangxichang/rebocap-wine)，
+在原版基础上加了 **SERIALCOMM 登记**（见「原理」一节）。没有它，Rebocap 在部分 Wine 环境里即使枚举到设备也会一直报 `-3`。
+
 ## 交付文件
 
 ```
-setupapi.dll                  运行时唯一的补丁文件（构建产物）
+setupapi.dll                  运行时唯一的补丁文件（构建产物，见「从源码构建」）
 rebocap-wine-install.sh       安装脚本（Linux 侧运行）
 rebocap-wine-uninstall.sh     卸载脚本
 README.md                     本说明
 ```
+
+本仓库目前没有发布预编译的 `setupapi.dll`，需要先自行构建（只需要 Zig，几秒钟）。
 
 ## 前置条件
 
@@ -21,6 +34,7 @@ README.md                     本说明
 - **Linux 用户对接收器串口有读写权限**（`/dev/ttyACM*`，权限通常为 `root:uucp 0660`）。
   没有权限时：补丁已生效（不再报 `-3`），但打开串口失败，日志循环报 `-2 IO连接错误`；
   修复见「串口权限」一节。
+- Bottles（Flatpak）需要给予设备访问权限（例如 `flatpak override --user --device=all com.usebottles.bottles`），否则 Wine 看不到 `/dev/ttyACM*`。
 - 本补丁只作用于放置它的那个 wine prefix，不影响其他程序。
 
 ## 串口权限（必须）
@@ -33,7 +47,7 @@ README.md                     本说明
 **方式 A：把用户加入 `uucp` 组（标准做法，需要重新登录）**
 
 ```bash
-sudo usermod -aG uucp "$USER"
+sudo usermod -aG uucp "$USER"   # Debian/Ubuntu 系一般是 dialout 组
 # 注销并重新登录桌面会话后生效
 ```
 
@@ -54,13 +68,15 @@ ls -l /dev/ttyACM*
 
 ## 安装
 
-1. 把上面四个文件放到 `rebocap.exe` 所在目录，例如：
+1. 构建 `setupapi.dll`（见「从源码构建」），得到 `zig-out/bin/setupapi.dll`。
+
+2. 把 `setupapi.dll` 和两个脚本放到 `rebocap.exe` 所在目录，例如：
 
    ```
    <prefix>/drive_c/Program Files (x86)/Rebocap/
    ```
 
-2. 赋执行权限并运行安装脚本：
+3. 赋执行权限并运行安装脚本：
 
    ```bash
    cd "<prefix>/drive_c/Program Files (x86)/Rebocap"
@@ -68,10 +84,13 @@ ls -l /dev/ttyACM*
    ./rebocap-wine-install.sh
    ```
 
-3. 安装脚本做三件事：定位并校验环境、删除 `KnownDLLs\setupapi`、
+   脚本会自动定位 prefix 和 wine；找不到时可以手动指定：
+   `./rebocap-wine-install.sh --prefix <prefix> --wine <wine 可执行文件>`。
+
+4. 安装脚本做三件事：定位并校验环境、删除 `KnownDLLs\setupapi`、
    设置 `HKCU\Software\Wine\DllOverrides\setupapi = native,builtin`。
 
-4. **生效时机（重要）**：需要 wine 会话重启——
+5. **生效时机（重要）**：需要 wine 会话重启——
 
    - 关闭该 prefix 里所有程序后重新启动（推荐）；
    - 或执行 `WINEPREFIX="<prefix>" <wine目录>/wineserver -k` 立即结束会话
@@ -84,6 +103,10 @@ ls -l /dev/ttyACM*
 用你喜欢的方式启动 `rebocap.exe`（Bottles 快捷方式、`bottles-cli run`、原生 `wine` 均可）。
 安装脚本不参与启动，也不会限制前端选择。
 
+> [!WARNING]
+> **不要在 Wine 里更新追踪器或接收器固件。** 更新中途出错可能让设备无法使用。
+> 需要更新固件时，请用官方 Linux 版或 Windows 版。
+
 ## 端口与 USB 插拔
 
 - 端口名（`PortName`）由补丁保证存在于真实注册表：首次打开设备注册表键时自动建键；
@@ -93,6 +116,7 @@ ls -l /dev/ttyACM*
   `com34` 映射可能悬空；此时重启程序不会恢复，需要：
 
   - 让 `com34` 重新指向当前 `ttyACM*`（即修正 `dosdevices/com34` 软链），再启动程序；
+  - 更稳的做法是指向不会变的路径，例如 `/dev/serial/by-id/usb-JXQ_Ltd__Co_RebornBodyCap_RebornRX-if00`；
   - 追踪器开关不影响"已连接/绿灯/固件"，只影响是否有实时读数。
 
 ## 验收标准
@@ -100,7 +124,7 @@ ls -l /dev/ttyACM*
 1. `rebocap.log` 中零 `-3`；
 2. 界面绿"已连接"、零弹窗；
 3. 追踪器开机后有实时读数；
-4. 配置页双固件 `v_15 / v_7`。
+4. 配置页显示追踪器与接收器的固件版本（例如 `v_15 / v_7`）。
 
 ## 排障
 
@@ -118,14 +142,17 @@ WINEPREFIX="<prefix>" "<wine>" reg query \
   "HKCU\Software\Wine\DllOverrides" /v setupapi
 ```
 
-| 现象                               | 可能原因                                 | 处理                                                       |
-| ---------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
-| 界面不绿、`rebocap.log` 刷 `-3`    | DllOverrides 没生效                      | 核验注册表；确认已做会话重启（关闭程序或 `wineserver -k`） |
-| 同上                               | KnownDLLs 没删掉                         | 重跑安装脚本；确认查询结果为空                             |
-| 完全没有变化                       | `setupapi.dll` 不在 `rebocap.exe` 同目录 | 放对位置后重跑安装脚本并重启会话                           |
-| 绿但无读数                         | 追踪器没开机                             | 打开追踪器（连接/绿灯/固件不依赖它，读数需要它）           |
-| 界面不绿、日志循环 `-2 IO连接错误` | 串口权限不足                             | 见「串口权限」一节                                         |
-| 重插后不识别                       | `com34` 映射悬空                         | 修正 `com34` 指向当前 `ttyACM*`/重启 prefix 后再启动程序   |
+| 现象 | 可能原因 | 处理 |
+| --- | --- | --- |
+| 界面不绿、`rebocap.log` 刷 `-3` | DllOverrides 没生效 | 核验注册表；确认已做会话重启（关闭程序或 `wineserver -k`） |
+| 同上 | KnownDLLs 没删掉 | 重跑安装脚本；确认查询结果为空 |
+| 同上，注册表都正确 | SERIALCOMM 没登记（用的是原版补丁） | 改用本 fork 构建的 `setupapi.dll` |
+| 完全没有变化 | `setupapi.dll` 不在 `rebocap.exe` 同目录 | 放对位置后重跑安装脚本并重启会话 |
+| 绿但无读数 | 追踪器没开机 | 打开追踪器（连接/绿灯/固件不依赖它，读数需要它） |
+| 界面不绿、日志循环 `-2 IO连接错误` | 串口权限不足 | 见「串口权限」一节 |
+| 重插后不识别 | `com34` 映射悬空 | 修正 `com34` 指向当前 `ttyACM*`/重启 prefix 后再启动程序 |
+
+用 `WINEDEBUG=+debugstr` 启动可以看到补丁输出的 `[rebocap-wine] ...` 调试信息。
 
 ## 卸载
 
@@ -143,7 +170,7 @@ WINEPREFIX="<prefix>" "<wine>" reg query \
   其中 7 个 `SetupDi*` 函数由补丁实现，返回已验证的设备参数（Ports 类 GUID、
   实例 ID `USB\VID_248A&PID_8002\REBORNRX`、设备属性等）；
   其余 ~610 个导出通过链接期"转发条目"交给系统原版，补丁不含它们的代码。
-- **SERIALCOMM 登记**：应用另有线程轮询 `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`，
+- **SERIALCOMM 登记**（本 fork 新增）：应用另有线程轮询 `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`，
   只接受其中列出的 COM 口。手动映射到 `dosdevices/comN` 的端口不会被 Wine mountmgr 登记，
   该键不存在时即使 SetupDi 枚举成功也会报 `-3`。补丁在首次枚举 Ports 类时以
   `REG_OPTION_VOLATILE` 创建该键并写入 `\Device\USBSER000 = <PortName>`（会话结束自动消失；
@@ -183,6 +210,14 @@ WINEPREFIX="<prefix>" "<wine>" reg query \
   （它只是构建原料，没有任何代理逻辑）。
 - 更换 Wine runner 时：用新 runner 的 `lib/wine/x86_64-windows/setupapi.dll`
   替换仓库根目录的 `system-setupapi.dll`，重新 `zig build --release` 即可。
+
+## 相关项目
+
+| 项目 | 用途 |
+| --- | --- |
+| [TW527E/rebocap-linux-wivrn-fbt](https://github.com/TW527E/rebocap-linux-wivrn-fbt) | Linux + WiVRn + VRChat 全身追踪的完整教程与启动脚本 |
+| [TW527E/rebocap-linux-compat](https://github.com/TW527E/rebocap-linux-compat) | `bridge.exe`：在 Wine 里把 Rebocap 的 named pipe 转成 TCP |
+| [TW527E/rebocap-wivrn-bridge](https://github.com/TW527E/rebocap-wivrn-bridge) | 把 Rebocap 的追踪器经 SolarXR 送进 WiVRn 的 CLI |
 
 ## 许可说明
 
